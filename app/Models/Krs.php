@@ -6,7 +6,7 @@ use Illuminate\Database\Eloquent\Model;
 
 class Krs extends Model
 {
-    protected $fillable = ['mahasiswa_id', 'mata_kuliah_id', 'nilai', 'semester'];
+    protected $fillable = ['mahasiswa_id', 'mata_kuliah_id', 'nilai', 'semester', 'huruf'];
 
     public function mahasiswa()
     {
@@ -15,6 +15,6 @@ class Krs extends Model
 
     public function mataKuliah()
     {
-        return $this->belongsTo(MataKuliah::class);
+        return $this->belongsTo(Matakuliah::class);
     }
 }

@@ -8,5 +8,10 @@ use App\Http\Controllers\IpkController;
 // });
 
 // routes/web.php
-Route::middleware('api')->post('/hitung-ipk', [IpkController::class, 'hitungIpk']);
+
+Route::get('/', [IpkController::class, 'formIpk']);
+Route::post('/ipk', [IpkController::class, 'fetchIpk']);
+
+Route::get('/hitung-ipk/{nim}', [IpkController::class, 'hitungIpk']);
+// Route::middleware('api')->post('/hitung-ipk', [IpkController::class, 'hitungIpk']);
 Route::get('/ipk/{nim}', [IpkController::class, 'getIpk']);

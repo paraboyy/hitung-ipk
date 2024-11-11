@@ -2,22 +2,45 @@
 
 namespace App\Http\Controllers;
 
-use App\Model\Mahasiswa;
-use App\Model\Krs;
-use App\Model\Matakuliah;
-
+use App\Models\Mahasiswa;
+use App\Models\Krs;
+use App\Models\Matakuliah;
 use Illuminate\Http\Request;
+
+use Illuminate\Support\Facades\DB;
 
 class IpkController extends Controller
 {
+    public function formIpk(){
+        return view('ipk-form');
+    }
+
+    public function fetchIpk(Request $request)
+    {
+        $nim = $request->input('nim');
+
+        // Memanggil API hitung-ipk untuk mendapatkan hasil IPK
+        $response = Http::post('http://127.0.0.1:8000/hitung-ipk', [
+            'nim' => $nim
+        ]);
+
+        if ($response->successful()) {
+            $data = $response->json();
+            return view('ipk-form', ['nim' => $nim, 'ipk' => $data['ipk']]);
+        } else {
+            return view('ipk-form', ['nim' => $nim, 'error' => 'Mahasiswa tidak ditemukan atau kesalahan lain']);
+        }
+    }
+
     public function hitungIpk(Request $request)
     {
         // Ambil NIM dari inputan
-        $nim = $request->input('nim');
+        $nim = $request->query('nim');
         $mahasiswa = Mahasiswa::where('nim', $nim)->first();
 
         if (!$mahasiswa) {
-            return response()->json(['error' => 'Mahasiswa tidak ditemukan'], 404);
+            return response()->json(['error' => 'Mahasiswa tidak ditemukan',
+                                    'nim' => $nim], 404);
         }
 
         // Hitung IPS per semester
@@ -32,31 +55,51 @@ class IpkController extends Controller
         return response()->json(['nim' => $nim, 'ipk' => $ipk]);
     }
 
-    private function hitungIpsPerSemester($mahasiswaId)
+    public function hitungIpsPerSemester($mahasiswaId)
     {
-        // Ambil KRS mahasiswa per semester
-        $krsPerSemester = Krs::where('mahasiswa_id', $mahasiswaId)
-                            ->groupBy('semester')
-                            ->get();
+        // Ambil KRS mahasiswa per semester, termasuk matakuliah yang terkait
+        $krsPerSemester = DB::table('krs')
+                            ->join('matakuliah', 'krs.matakuliah_id', '=', 'matakuliah.id')
+                            ->select('krs.semester', 'krs.nilai', 'krs.huruf', 'matakuliah.name as nama_matakuliah', 'matakuliah.sks')
+                            ->where('krs.mahasiswa_id', $mahasiswaId)
+                            ->orderBy('krs.semester')
+                            ->get()
+                            ->groupBy('semester');  // Mengelompokkan berdasarkan semester
 
         $ips = [];
-        
-        foreach ($krsPerSemester as $semester) {
+        $bobotNilai = [
+            'A' => 4.0,
+            'B+' => 3.5,
+            'B' => 3.0,
+            'C+' => 2.5,
+            'C' => 2.0,
+            'D' => 1.0,
+            'E' => 0.0,
+        ];
+
+        // Proses setiap semester
+        foreach ($krsPerSemester as $semester => $krsItems) {
             $nilaiTotal = 0;
             $sksTotal = 0;
+            $nilaiIps = 0;
 
-            // Ambil KRS pada semester tersebut
-            $krs = Krs::where('mahasiswa_id', $mahasiswaId)
-                        ->where('semester', $semester->semester)
-                        ->get();
-
-            foreach ($krs as $item) {
-                $matakuliah = Matakuliah::find($item->matakuliah_id);
-                $nilaiTotal += $item->nilai * $matakuliah->sks;
-                $sksTotal += $matakuliah->sks;
+            // Proses setiap KRS pada semester tersebut
+            foreach ($krsItems as $item) {
+                // Pastikan nilai valid dan matakuliah memiliki SKS
+                if (isset($item->nilai) && $item->nilai !== null && $item->sks > 0) {
+                    // Ambil bobot nilai berdasarkan huruf
+                    $bobot = isset($bobotNilai[$item->huruf]) ? $bobotNilai[$item->huruf] : 0;
+                    
+                    // Total nilai dikalikan SKS
+                    $nilaiTotal += $item->nilai * $item->sks;
+                    $nilaiIps += $bobot * $item->sks;
+                    $sksTotal += $item->sks;  // Total SKS
+                }
             }
 
-            $ips[$semester->semester] = $sksTotal > 0 ? $nilaiTotal / $sksTotal : 0;
+            // Hitung IPS per semester, pastikan SKS total tidak 0
+            $ips[$semester] = $sksTotal > 0 ? $nilaiIps / $sksTotal : 0;
+            // $totalnilai[$semester] = $sksTotal > 0 ? $nilaiTotal / $sksTotal : 0;
         }
 
         return $ips;
@@ -72,24 +115,24 @@ class IpkController extends Controller
     }
 
     //SIMULASI GET DATA
-    public function getIpk($nim){
-        // Simulasi data IPK berdasarkan NIM
-        $dataIpk = [
-            '2105551050' => 3.5,
-            '2105551051' => 3.7,
-            '2105551052' => 3.9,
-        ];
+    public function getIpk($nim)
+    {
+        // Cari mahasiswa berdasarkan NIM di database
+        $mahasiswa = Mahasiswa::where('nim', $nim)->first();
 
-        // Cek apakah NIM ada dalam data
-        if (array_key_exists($nim, $dataIpk)) {
+        if ($mahasiswa) {
+            $ipsPerSemester = $this->hitungIpsPerSemester($mahasiswa->id);
+            $ipk = $this->hitungIpkIPS($ipsPerSemester);
+
             return response()->json([
-                'nim' => $nim,
-                'ipk' => $dataIpk[$nim]
+                'nim' => $mahasiswa->nim,
+                'ips' => $ipsPerSemester,
+                'ipk' => $ipk,
             ]);
         } else {
             return response()->json([
                 'message' => 'NIM tidak ditemukan'
             ], 404);
         }
-    } 
+    }
 }
