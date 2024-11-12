@@ -11,27 +11,8 @@ use Illuminate\Support\Facades\DB;
 
 class IpkController extends Controller
 {
-    public function formIpk(){
-        return view('ipk-form');
-    }
 
-    public function fetchIpk(Request $request)
-    {
-        $nim = $request->input('nim');
-
-        // Memanggil API hitung-ipk untuk mendapatkan hasil IPK
-        $response = Http::post('http://127.0.0.1:8000/hitung-ipk', [
-            'nim' => $nim
-        ]);
-
-        if ($response->successful()) {
-            $data = $response->json();
-            return view('ipk-form', ['nim' => $nim, 'ipk' => $data['ipk']]);
-        } else {
-            return view('ipk-form', ['nim' => $nim, 'error' => 'Mahasiswa tidak ditemukan atau kesalahan lain']);
-        }
-    }
-
+    //UJI POST API
     public function hitungIpk(Request $request)
     {
         // Ambil NIM dari inputan
@@ -55,6 +36,7 @@ class IpkController extends Controller
         return response()->json(['nim' => $nim, 'ipk' => $ipk]);
     }
 
+    //HITUNG IPS
     public function hitungIpsPerSemester($mahasiswaId)
     {
         // Ambil KRS mahasiswa per semester, termasuk matakuliah yang terkait
@@ -67,6 +49,7 @@ class IpkController extends Controller
                             ->groupBy('semester');  // Mengelompokkan berdasarkan semester
 
         $ips = [];
+        $daftarMatakuliah = [];
         $bobotNilai = [
             'A' => 4.0,
             'B+' => 3.5,
@@ -79,9 +62,10 @@ class IpkController extends Controller
 
         // Proses setiap semester
         foreach ($krsPerSemester as $semester => $krsItems) {
-            $nilaiTotal = 0;
+            // $nilaiTotal = 0;
             $sksTotal = 0;
             $nilaiIps = 0;
+            $matakuliahList = [];
 
             // Proses setiap KRS pada semester tersebut
             foreach ($krsItems as $item) {
@@ -90,8 +74,15 @@ class IpkController extends Controller
                     // Ambil bobot nilai berdasarkan huruf
                     $bobot = isset($bobotNilai[$item->huruf]) ? $bobotNilai[$item->huruf] : 0;
                     
+                    // Ambil Matakuliah
+                    $matakuliahList[] = [
+                        'nama_matakuliah' => $item->nama_matakuliah,
+                        'sks' => $item->sks,
+                        'nilai' => $item->nilai,
+                    ];
+
                     // Total nilai dikalikan SKS
-                    $nilaiTotal += $item->nilai * $item->sks;
+                    // $nilaiTotal += $item->nilai * $item->sks;
                     $nilaiIps += $bobot * $item->sks;
                     $sksTotal += $item->sks;  // Total SKS
                 }
@@ -99,12 +90,16 @@ class IpkController extends Controller
 
             // Hitung IPS per semester, pastikan SKS total tidak 0
             $ips[$semester] = $sksTotal > 0 ? $nilaiIps / $sksTotal : 0;
-            // $totalnilai[$semester] = $sksTotal > 0 ? $nilaiTotal / $sksTotal : 0;
+            $daftarMatakuliah[$semester] = $matakuliahList;
         }
 
-        return $ips;
+        return [
+            'ips' => $ips,
+            'matakuiah' => $daftarMatakuliah
+        ];
     }
 
+    //HITUNG IPK
     private function hitungIpkIPS($ipsPerSemester)
     {
         // Hitung IPK berdasarkan IPS per semester
@@ -126,6 +121,7 @@ class IpkController extends Controller
 
             return response()->json([
                 'nim' => $mahasiswa->nim,
+                'nama' => $mahasiswa->name,	
                 'ips' => $ipsPerSemester,
                 'ipk' => $ipk,
             ]);
