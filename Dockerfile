@@ -6,6 +6,13 @@ RUN mkdir -p /run/nginx
 
 COPY docker/nginx.conf /etc/nginx/nginx.conf
 
+# Install dependencies
+# RUN apt-get update && apt-get install -y libpng-dev libjpeg-dev libfreetype6-dev libxml2-dev zlib1g-dev libpq-dev libzip-dev
+
+# Install PDO MySQL extension
+RUN docker-php-ext-install pdo pdo_mysql
+
+
 RUN mkdir -p /app
 COPY . /app
 

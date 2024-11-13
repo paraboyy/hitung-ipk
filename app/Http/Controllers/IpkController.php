@@ -13,28 +13,28 @@ class IpkController extends Controller
 {
 
     //UJI POST API
-    public function hitungIpk(Request $request)
-    {
-        // Ambil NIM dari inputan
-        $nim = $request->query('nim');
-        $mahasiswa = Mahasiswa::where('nim', $nim)->first();
+    // public function hitungIpk(Request $request)
+    // {
+    //     // Ambil NIM dari inputan
+    //     $nim = $request->query('nim');
+    //     $mahasiswa = Mahasiswa::where('nim', $nim)->first();
 
-        if (!$mahasiswa) {
-            return response()->json(['error' => 'Mahasiswa tidak ditemukan',
-                                    'nim' => $nim], 404);
-        }
+    //     if (!$mahasiswa) {
+    //         return response()->json(['error' => 'Mahasiswa tidak ditemukan',
+    //                                 'nim' => $nim], 404);
+    //     }
 
-        // Hitung IPS per semester
-        $ipsPerSemester = $this->hitungIpsPerSemester($mahasiswa->id);
+    //     // Hitung IPS per semester
+    //     $ipsPerSemester = $this->hitungIpsPerSemester($mahasiswa->id);
 
-        // Hitung IPK berdasarkan IPS per semester
-        $ipk = $this->hitungIpkIPS($ipsPerSemester);
+    //     // Hitung IPK berdasarkan IPS per semester
+    //     $ipk = $this->hitungIpkIPS($ipsPerSemester);
 
-        // Simpan IPK di database
-        $mahasiswa->ipk()->create(['ipk' => $ipk]);
+    //     // Simpan IPK di database
+    //     $mahasiswa->ipk()->create(['ipk' => $ipk]);
 
-        return response()->json(['nim' => $nim, 'ipk' => $ipk]);
-    }
+    //     return response()->json(['nim' => $nim, 'ipk' => $ipk]);
+    // }
 
     //HITUNG IPS
     public function hitungIpsPerSemester($mahasiswaId)
@@ -109,22 +109,69 @@ class IpkController extends Controller
         return $jumlahSemester > 0 ? $totalIps / $jumlahSemester : 0;
     }
 
-    //SIMULASI GET DATA
+     // Fungsi untuk format waktu (misalnya dalam detik)
+     private function getFormattedTime($seconds)
+     {
+         $minutes = floor($seconds / 60);
+         $seconds = round($seconds % 60, 2);
+ 
+         return "{$minutes} menit {$seconds} detik";
+     }
+
+    //SIMULASI GET DATA HITUNG IPK
     public function getIpk($nim)
     {
+
+        // Catat waktu mulai
+        $startTime = microtime(true);
+
         // Cari mahasiswa berdasarkan NIM di database
         $mahasiswa = Mahasiswa::where('nim', $nim)->first();
 
         if ($mahasiswa) {
             $ipsPerSemester = $this->hitungIpsPerSemester($mahasiswa->id);
-            $ipk = $this->hitungIpkIPS($ipsPerSemester);
+            $ipk = $this->hitungIpkIPS($ipsPerSemester['ips']);
 
-            return response()->json([
-                'nim' => $mahasiswa->nim,
-                'nama' => $mahasiswa->name,	
-                'ips' => $ipsPerSemester,
-                'ipk' => $ipk,
-            ]);
+            // Cek apakah mahasiswa sudah memiliki IPK
+            $existingIpk = $mahasiswa->ipk()->latest()->first();
+
+            if ($existingIpk) {
+                // Jika IPK yang baru sama dengan yang sudah ada, tidak melakukan update
+                if ($existingIpk->ipk == $ipk) {
+                    return response()->json([
+                        'nim' => $mahasiswa->nim,
+                        'nama' => $mahasiswa->name,	
+                        'ips' => $ipsPerSemester,
+                        'ipk' => $ipk,
+                        'waktu respon' => $this->getFormattedTime(microtime(true) - $startTime),
+                        'message' => 'IPK sudah diperbarui sebelumnya dan tidak perlu diupdate.',
+                    ]);
+                }
+        
+                // Jika IPK berbeda, update nilai IPK yang terakhir
+                $existingIpk->update(['ipk' => $ipk]);
+        
+                return response()->json([
+                    'nim' => $mahasiswa->nim,
+                    'nama' => $mahasiswa->name,	
+                    'ips' => $ipsPerSemester,
+                    'ipk' => $ipk,
+                    'waktu respon' => $this->getFormattedTime(microtime(true) - $startTime),
+                    'message' => 'IPK berhasil diupdate.',
+                ]);
+            } else {
+                // Jika IPK belum ada, simpan IPK baru
+                $mahasiswa->ipk()->create(['ipk' => $ipk]);
+        
+                return response()->json([
+                    'nim' => $mahasiswa->nim,
+                    'nama' => $mahasiswa->name,	
+                    'ips' => $ipsPerSemester,
+                    'ipk' => $ipk,
+                    'waktu respon' => $this->getFormattedTime(microtime(true) - $startTime),
+                    'message' => 'IPK berhasil disimpan.',
+                ]);
+            }
         } else {
             return response()->json([
                 'message' => 'NIM tidak ditemukan'
